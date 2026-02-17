@@ -1,0 +1,154 @@
+#+title: org-demo
+
+Create executable demo documents using org-mode as a backend.
+
+~org-demo~ is a Python re-implementation of [[https://github.com/simonw/showboat][Showboat]] that uses Emacs org-mode as the document backend instead of Markdown. Every command delegates to elisp evaluated against a running Emacs server.
+
+** Features
+:PROPERTIES:
+:ID:       22f9a346-3c02-4fc8-8e6c-cb9c220c1ebd
+:END:
+
+- Create literate demo documents that interleave code, output, and commentary
+- Execute code in multiple languages (Python, Bash, etc.) and capture output
+- Verify that code blocks still work correctly and produce expected output
+- Extract executable commands from a document to recreate it
+- Fully compatible with Showboat's CLI interface and workflow
+
+** TODO Installation
+:PROPERTIES:
+:ID:       5c0173dc-c445-41d6-8e45-1c8a9d1dec5e
+:END:
+
+
+
+** Quick Start
+:PROPERTIES:
+:ID:       2bc77634-fe32-4612-ade0-f9e58e9f33fa
+:END:
+
+Before using ~org-demo~, ensure you have an Emacs server running:
+
+#+begin_src bash
+emacs --daemon
+#+end_src
+
+Optionally, set the ~EMACS_SERVER~ environment variable if using a non-default server name:
+
+#+begin_src bash
+export EMACS_SERVER=edit
+#+end_src
+
+Now you can create and populate demo documents:
+
+#+begin_src bash
+org-demo init demo.org "Setting Up a Python Project"
+org-demo note demo.org "First, let's create a virtual environment."
+org-demo exec demo.org bash "python3 -m venv .venv && echo 'Done'"
+org-demo exec demo.org python3 "print('Hello from Python')"
+org-demo pop demo.org
+org-demo verify demo.org
+org-demo extract demo.org
+#+end_src
+
+** Commands
+:PROPERTIES:
+:ID:       1c201a81-44d9-4a30-8a3e-4837e6c90e27
+:END:
+
+*** init <FILE> <TITLE>
+:PROPERTIES:
+:ID:       42c6a6fe-74c7-40fe-9ee6-c8ff35314093
+:END:
+Create a new demo document with the given title.
+
+#+begin_src bash
+org-demo init example.org "My Demo"
+#+end_src
+
+*** note <FILE> [TEXT]
+:PROPERTIES:
+:ID:       8c2be728-eabe-4489-bc78-259e3a19b564
+:END:
+Add a text note or commentary to the document. If TEXT is omitted, reads from stdin.
+
+#+begin_src bash
+org-demo note example.org "This is important context."
+#+end_src
+
+*** exec <FILE> <LANGUAGE> [CODE]
+:PROPERTIES:
+:ID:       840de8e9-e892-406a-8d26-ceabbd8a5e17
+:END:
+Execute code in the specified language and capture both the code and its output in the document. If CODE is omitted, reads from stdin.
+
+#+begin_src bash
+org-demo exec example.org python3 "print('Hello, World!')"
+org-demo exec example.org bash < my_script.sh
+#+end_src
+
+*** image <FILE> <PATH_OR_REF>
+:PROPERTIES:
+:ID:       f8ab9ee5-ef48-4df9-9631-4af98b639e69
+:END:
+Embed an image in the document. Accepts either a file path or a markdown image reference.
+
+#+begin_src bash
+org-demo image example.org /path/to/image.png
+org-demo image example.org "![alt text](/path/to/image.png)"
+#+end_src
+
+*** pop <FILE>
+:PROPERTIES:
+:ID:       a48dfe22-8dc3-4419-8de1-27f3d415bf79
+:END:
+Remove the most recent entry (note, code block, or image) from the document.
+
+#+begin_src bash
+org-demo pop example.org
+#+end_src
+
+*** verify <FILE> [--output OUTPUT_FILE]
+:PROPERTIES:
+:ID:       71c0194e-1945-43d5-b413-8cc0543b51dd
+:END:
+Re-run all code blocks in the document and compare outputs to what's stored. Useful for ensuring code examples stay up-to-date.
+
+#+begin_src bash
+org-demo verify example.org
+org-demo verify example.org --output example-updated.org
+#+end_src
+
+*** extract <FILE> [--filename FILENAME]
+:PROPERTIES:
+:ID:       8418618b-2572-43b2-95f2-881bca972e55
+:END:
+Emit the shell commands that would recreate the entire document. Useful for sharing or automating demo creation.
+
+#+begin_src bash
+org-demo extract example.org
+org-demo extract example.org --filename different-name.org
+#+end_src
+
+** Options
+:PROPERTIES:
+:ID:       dc23b9bf-4ea8-4444-9ed8-b37fe76e0967
+:END:
+
+- ~--workdir PATH~: Set the working directory for code execution (default: current directory)
+- ~--daemon DAEMON_NAME~: Specify the Emacs server name (equivalent to ~emacsclient -s DAEMON_NAME~). Can also be set via the ~EMACS_SERVER~ environment variable.
+- ~--version~: Show the version number
+
+** Acknowledgments
+:PROPERTIES:
+:ID:       a9f527d2-88f2-4fcb-8f47-1b05d6e2ba0e
+:END:
+
+This project is inspired by [[https://github.com/simonw/showboat][Showboat]], created by Simon Willison. The core idea and CLI interface closely follow Showboat's design, but use Emacs org-mode as the underlying document format instead of Markdown.
+
+** License
+:PROPERTIES:
+:ID:       a7db0c2b-1d63-4d71-a38d-52c9b4b927fb
+:END:
+
+See LICENSE file for details.

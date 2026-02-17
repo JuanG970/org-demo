@@ -1,0 +1,29 @@
+#+TITLE: Simple python demo
+#+PROPERTY: org-demo-id 4e337f3a-ecab-4d43-bf53-c2128c179bd6
+#+DATE: [2026-02-17 Tue 14:00]
+
+#+BEGIN_SRC python
+print('Hello world')
+#+END_SRC
+
+#+RESULTS:
+: None
+#+BEGIN_SRC elisp
+(+ 2 2)
+#+END_SRC
+
+#+RESULTS:
+: 4
+The following should fail:
+#+BEGIN_SRC elisp
+(random 100)
+#+END_SRC
+
+#+RESULTS:
+: 46
+#+BEGIN_SRC elisp
+(random 100)
+#+END_SRC
+
+#+RESULTS:
+: 43
