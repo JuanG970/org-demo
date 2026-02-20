@@ -28,6 +28,11 @@
                       (when (and (> (point) (point-min))
                                  (save-excursion
                                    (forward-line -1)
+                                   (looking-at-p "^#\\+NAME:")))
+                        (forward-line -1))
+                      (when (and (> (point) (point-min))
+                                 (save-excursion
+                                   (forward-line -1)
                                    (looking-at-p "^$")))
                         (forward-line -1))
                       (setq start (point)))
@@ -59,6 +64,11 @@
                   (when (and (> (point) (point-min))
                              (save-excursion
                                (forward-line -1)
+                               (looking-at-p "^#\\+NAME:")))
+                    (forward-line -1))
+                  (when (and (> (point) (point-min))
+                             (save-excursion
+                               (forward-line -1)
                                (looking-at-p "^$")))
                     (forward-line -1))
                   (setq start (point)))
@@ -75,6 +85,11 @@
         (if (re-search-backward "^#\\+BEGIN_SRC" nil t)
             (progn
               (beginning-of-line)
+              (when (and (> (point) (point-min))
+                         (save-excursion
+                           (forward-line -1)
+                           (looking-at-p "^#\\+NAME:")))
+                (forward-line -1))
               (when (and (> (point) (point-min))
                          (save-excursion
                            (forward-line -1)

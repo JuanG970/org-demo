@@ -85,9 +85,12 @@ class OrgDocument:
         Returns the captured output as a string.
         """
         abs_file = str(Path(file).resolve())
+        # Generate a unique name for the block so we can refer to it later.
+        name = f"block-{_uuid.uuid4().hex[:8]}"
+
         resp = self.handler.execute_file(
             "org-demo-exec.el",
-            params={"file": abs_file, "lang": lang, "code": code},
+            params={"file": abs_file, "lang": lang, "code": code, "name": name},
             output_format="json",
         )
         if not resp.success:
