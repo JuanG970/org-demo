@@ -55,6 +55,8 @@ class TestEmacsHandler:
         assert (elisp_dir / "org-demo-pop.el").exists()
         assert (elisp_dir / "org-demo-read.el").exists()
         assert (elisp_dir / "org-demo-verify.el").exists()
+        assert (elisp_dir / "org-demo-call.el").exists()
+        assert (elisp_dir / "org-demo-tangle.el").exists()
 
     def test_load_elisp_missing_file(self):
         """Loading a nonexistent .el file should raise RuntimeError."""
@@ -124,7 +126,46 @@ class TestOrgDocumentExec:
         params = args[1].get("params") or args[0][1]
         assert params["lang"] == "bash"
         assert params["code"] == "echo hello"
-        assert "block-" in params["name"]
+        # Default: empty name and header_args
+        assert params["name"] == ""
+        assert params["header_args"] == ""
+
+    def test_exec_with_name(self, doc, mock_handler):
+        """Exec should pass #+NAME: to elisp when provided."""
+        mock_handler.execute_file.return_value = EmacsResponse(success=True, data="42")
+        doc.exec("demo.org", "python", "return 42", name="compute")
+        params = (
+            mock_handler.execute_file.call_args[1].get("params")
+            or mock_handler.execute_file.call_args[0][1]
+        )
+        assert params["name"] == "compute"
+
+    def test_exec_with_header_args(self, doc, mock_handler):
+        """Exec should pass header args to elisp when provided."""
+        mock_handler.execute_file.return_value = EmacsResponse(success=True, data="ok")
+        doc.exec("demo.org", "python", "x", header_args=":session *py* :results output")
+        params = (
+            mock_handler.execute_file.call_args[1].get("params")
+            or mock_handler.execute_file.call_args[0][1]
+        )
+        assert params["header_args"] == ":session *py* :results output"
+
+    def test_exec_with_name_and_header_args(self, doc, mock_handler):
+        """Exec should pass both name and header args together."""
+        mock_handler.execute_file.return_value = EmacsResponse(success=True, data="")
+        doc.exec(
+            "demo.org",
+            "R",
+            "summary(data)",
+            name="analyze",
+            header_args=":session *R* :dir /tmp",
+        )
+        params = (
+            mock_handler.execute_file.call_args[1].get("params")
+            or mock_handler.execute_file.call_args[0][1]
+        )
+        assert params["name"] == "analyze"
+        assert params["header_args"] == ":session *R* :dir /tmp"
 
     def test_exec_raises_on_failure(self, mock_handler):
         mock_handler.execute_file.return_value = EmacsResponse(
@@ -152,6 +193,93 @@ class TestOrgDocumentPop:
         doc.pop("demo.org")
         args = mock_handler.execute_file.call_args
         assert args[0][0] == "org-demo-pop.el"
+
+
+class TestOrgDocumentCall:
+    def test_call_basic(self, doc, mock_handler):
+        """Call should invoke org-demo-call.el with the block name."""
+        mock_handler.execute_file.return_value = EmacsResponse(
+            success=True, data="hello"
+        )
+        output = doc.call("demo.org", "greet")
+        assert output == "hello"
+        args = mock_handler.execute_file.call_args
+        assert args[0][0] == "org-demo-call.el"
+        params = args[1].get("params") or args[0][1]
+        assert params["name"] == "greet"
+        assert params["arguments"] == ""
+        assert params["inside_header"] == ""
+        assert params["end_header"] == ""
+
+    def test_call_with_arguments(self, doc, mock_handler):
+        mock_handler.execute_file.return_value = EmacsResponse(success=True, data="15")
+        doc.call("demo.org", "add", arguments="x=5, y=10")
+        params = (
+            mock_handler.execute_file.call_args[1].get("params")
+            or mock_handler.execute_file.call_args[0][1]
+        )
+        assert params["arguments"] == "x=5, y=10"
+
+    def test_call_with_headers(self, doc, mock_handler):
+        mock_handler.execute_file.return_value = EmacsResponse(success=True, data="")
+        doc.call(
+            "demo.org",
+            "process",
+            inside_header=":session *py*",
+            end_header=":results silent",
+        )
+        params = (
+            mock_handler.execute_file.call_args[1].get("params")
+            or mock_handler.execute_file.call_args[0][1]
+        )
+        assert params["inside_header"] == ":session *py*"
+        assert params["end_header"] == ":results silent"
+
+    def test_call_raises_on_failure(self, mock_handler):
+        mock_handler.execute_file.return_value = EmacsResponse(
+            success=False, data=None, error="no such block"
+        )
+        doc = OrgDocument(handler=mock_handler)
+        with pytest.raises(OrgDemoError, match="call failed"):
+            doc.call("demo.org", "nonexistent")
+
+
+class TestOrgDocumentTangle:
+    def test_tangle_returns_file_list(self, mock_handler):
+        mock_handler.execute_file.return_value = EmacsResponse(
+            success=True, data=["hello.sh", "main.py"]
+        )
+        doc = OrgDocument(handler=mock_handler)
+        files = doc.tangle("demo.org")
+        assert files == ["hello.sh", "main.py"]
+        args = mock_handler.execute_file.call_args
+        assert args[0][0] == "org-demo-tangle.el"
+
+    def test_tangle_with_target_dir(self, mock_handler):
+        mock_handler.execute_file.return_value = EmacsResponse(
+            success=True, data=["src/hello.sh"]
+        )
+        doc = OrgDocument(handler=mock_handler)
+        doc.tangle("demo.org", target_dir="./src")
+        params = (
+            mock_handler.execute_file.call_args[1].get("params")
+            or mock_handler.execute_file.call_args[0][1]
+        )
+        assert params["target_dir"] == "./src"
+
+    def test_tangle_empty_result(self, mock_handler):
+        mock_handler.execute_file.return_value = EmacsResponse(success=True, data=[])
+        doc = OrgDocument(handler=mock_handler)
+        files = doc.tangle("demo.org")
+        assert files == []
+
+    def test_tangle_raises_on_failure(self, mock_handler):
+        mock_handler.execute_file.return_value = EmacsResponse(
+            success=False, data=None, error="tangle error"
+        )
+        doc = OrgDocument(handler=mock_handler)
+        with pytest.raises(OrgDemoError, match="tangle failed"):
+            doc.tangle("demo.org")
 
 
 class TestOrgDocumentVerify:
@@ -294,6 +422,61 @@ class TestOrgDocumentExtract:
         assert "copy.org" in commands
         assert "demo.org" not in commands
 
+    def test_extract_with_name_and_header_args(self, mock_handler):
+        """Extract should emit --name and --header-args flags."""
+        read_response = EmacsResponse(
+            success=True,
+            data={
+                "title": "T",
+                "uuid": "x",
+                "date": "",
+                "entries": [
+                    {
+                        "type": "exec",
+                        "lang": "python",
+                        "code": "print(x)",
+                        "output": "42",
+                        "name": "compute",
+                        "header_args": ":session *py*",
+                    },
+                ],
+            },
+        )
+        mock_handler.execute_file.return_value = read_response
+        doc = OrgDocument(handler=mock_handler)
+        commands = doc.extract("demo.org")
+        assert "--name" in commands
+        assert "compute" in commands
+        assert "--header-args" in commands
+        assert ":session *py*" in commands or "session" in commands
+
+    def test_extract_with_call_entry(self, mock_handler):
+        """Extract should emit org-demo call commands."""
+        read_response = EmacsResponse(
+            success=True,
+            data={
+                "title": "T",
+                "uuid": "x",
+                "date": "",
+                "entries": [
+                    {
+                        "type": "call",
+                        "name": "greet",
+                        "arguments": "x=5",
+                        "inside_header": "",
+                        "end_header": ":results silent",
+                        "output": "",
+                    },
+                ],
+            },
+        )
+        mock_handler.execute_file.return_value = read_response
+        doc = OrgDocument(handler=mock_handler)
+        commands = doc.extract("demo.org")
+        assert "org-demo call" in commands
+        assert "greet" in commands
+        assert "--end-header" in commands
+
 
 # ======================================================================
 # CLI smoke tests
@@ -344,3 +527,48 @@ class TestCLI:
         result = runner.invoke(cli, ["extract", "--help"])
         assert result.exit_code == 0
         assert "--filename" in result.output
+
+    def test_cli_exec_has_name_and_header_args(self):
+        """Exec subcommand should support --name and --header-args."""
+        from click.testing import CliRunner
+        from org_demo.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["exec", "--help"])
+        assert result.exit_code == 0
+        assert "--name" in result.output
+        assert "--header-args" in result.output
+        assert ":session" in result.output  # Examples should mention sessions
+
+    def test_cli_call_subcommand_exists(self):
+        from click.testing import CliRunner
+        from org_demo.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["call", "--help"])
+        assert result.exit_code == 0
+        assert "--inside-header" in result.output
+        assert "--end-header" in result.output
+        assert "CALL" in result.output or "call" in result.output
+
+    def test_cli_tangle_subcommand_exists(self):
+        from click.testing import CliRunner
+        from org_demo.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["tangle", "--help"])
+        assert result.exit_code == 0
+        assert "--target-dir" in result.output
+
+    def test_cli_help_shows_header_args_docs(self):
+        """Main --help should document org-babel header arguments."""
+        from click.testing import CliRunner
+        from org_demo.cli import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["--help"])
+        assert result.exit_code == 0
+        assert ":session" in result.output
+        assert ":results" in result.output
+        assert ":tangle" in result.output
+        assert ":noweb" in result.output

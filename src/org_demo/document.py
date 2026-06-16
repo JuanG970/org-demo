@@ -78,10 +78,31 @@ class OrgDocument:
     # exec
     # ------------------------------------------------------------------
 
-    def exec(self, file: str, lang: str, code: str) -> str:
+    def exec(
+        self,
+        file: str,
+        lang: str,
+        code: str,
+        name: Optional[str] = None,
+        header_args: Optional[str] = None,
+    ) -> str:
         """Append a source block and execute it via org-babel.
 
-        Babel handles language routing and result insertion natively.
+        Parameters
+        ----------
+        file
+            Path to the ``.org`` document.
+        lang
+            Source language (e.g. ``bash``, ``python``, ``emacs-lisp``).
+        code
+            Code to insert into the block.
+        name
+            Optional ``#+NAME:`` for the block, making it callable from
+            other blocks or via ``#+CALL:``.
+        header_args
+            Optional org-babel header arguments appended to the
+            ``#+BEGIN_SRC`` line (e.g. ``:session *py* :results output``).
+
         Returns the captured output as a string.
         """
         abs_file = str(Path(file).resolve())
@@ -90,7 +111,13 @@ class OrgDocument:
 
         resp = self.handler.execute_file(
             "org-demo-exec.el",
-            params={"file": abs_file, "lang": lang, "code": code, "name": name},
+            params={
+                "file": abs_file,
+                "lang": lang,
+                "code": code,
+                "name": name or "",
+                "header_args": header_args or "",
+            },
             output_format="json",
         )
         if not resp.success:
@@ -129,6 +156,53 @@ class OrgDocument:
 
     # ------------------------------------------------------------------
     # pop
+    # ------------------------------------------------------------------
+
+    def call(
+        self,
+        file: str,
+        name: str,
+        arguments: Optional[str] = None,
+        inside_header: Optional[str] = None,
+        end_header: Optional[str] = None,
+    ) -> str:
+        """Append a ``#+CALL:`` line and execute it via org-babel.
+
+        Parameters
+        ----------
+        file
+            Path to the ``.org`` document.
+        name
+            Name of the source block to call.
+        arguments
+            Arguments to pass, e.g. ``x=5, y=10``.
+        inside_header
+            Header args placed *inside* the call brackets, e.g.
+            ``:session *py*``.
+        end_header
+            Header args placed *after* the call, e.g.
+            ``:results output``.
+
+        Returns the captured output as a string.
+        """
+        abs_file = str(Path(file).resolve())
+        resp = self.handler.execute_file(
+            "org-demo-call.el",
+            params={
+                "file": abs_file,
+                "name": name,
+                "arguments": arguments or "",
+                "inside_header": inside_header or "",
+                "end_header": end_header or "",
+            },
+            output_format="json",
+        )
+        if not resp.success:
+            raise OrgDemoError(f"call failed: {resp.error}")
+        return resp.data
+
+    # ------------------------------------------------------------------
+    # pop (continued)
     # ------------------------------------------------------------------
 
     def pop(self, file: str) -> None:
@@ -229,9 +303,15 @@ class OrgDocument:
                     f"org-demo note {shlex.quote(target)} {shlex.quote(entry['text'])}"
                 )
             elif entry["type"] == "exec":
-                lines.append(
-                    f"org-demo exec {shlex.quote(target)} {entry['lang']} {shlex.quote(entry['code'])}"
-                )
+                parts = ["org-demo exec"]
+                if entry.get("name"):
+                    parts.append(f"--name {shlex.quote(entry['name'])}")
+                if entry.get("header_args"):
+                    parts.append(f"--header-args {shlex.quote(entry['header_args'])}")
+                parts.append(shlex.quote(target))
+                parts.append(entry["lang"])
+                parts.append(shlex.quote(entry["code"]))
+                lines.append(" ".join(parts))
             elif entry["type"] == "image":
                 path = entry.get("path", "")
                 alt = entry.get("alt", "")
@@ -243,8 +323,54 @@ class OrgDocument:
                     lines.append(
                         f"org-demo image {shlex.quote(target)} {shlex.quote(path)}"
                     )
+            elif entry["type"] == "call":
+                parts = ["org-demo call"]
+                if entry.get("inside_header"):
+                    parts.append(
+                        f"--inside-header {shlex.quote(entry['inside_header'])}"
+                    )
+                if entry.get("end_header"):
+                    parts.append(f"--end-header {shlex.quote(entry['end_header'])}")
+                parts.append(shlex.quote(target))
+                parts.append(shlex.quote(entry["name"]))
+                if entry.get("arguments"):
+                    parts.append(shlex.quote(entry["arguments"]))
+                lines.append(" ".join(parts))
 
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # tangle
+    # ------------------------------------------------------------------
+
+    def tangle(self, file: str, target_dir: Optional[str] = None) -> list[str]:
+        """Extract source code from blocks with ``:tangle`` headers.
+
+        Delegates to ``org-babel-tangle``.  Returns a list of file paths
+        that were written.
+
+        Parameters
+        ----------
+        file
+            Path to the ``.org`` document.
+        target_dir
+            Optional directory to write tangled files into.
+        """
+        abs_file = str(Path(file).resolve())
+        resp = self.handler.execute_file(
+            "org-demo-tangle.el",
+            params={
+                "file": abs_file,
+                "target_dir": target_dir or "",
+            },
+            output_format="json",
+        )
+        if not resp.success:
+            raise OrgDemoError(f"tangle failed: {resp.error}")
+        result = resp.data
+        if isinstance(result, list):
+            return result
+        return []
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -15,12 +15,12 @@ dependencies = [
 [project.scripts]
 org-demo = "org_demo.cli:cli"
 
-[tool.poetry]
-packages = [{include = "org_demo", from = "src"}]
-
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/org_demo"]
 
 [dependency-groups]
 dev = [

@@ -1,7 +1,9 @@
 ;;; org-demo-pop.el --- Remove the last entry from a demo document  -*- lexical-binding: t; -*-
 
-;; Removes the most recent entry (note paragraph, src+results block, or image block)
+;; Removes the most recent entry (note paragraph, src+results block, call+results, or image block)
 ;; from the end of the org file.
+;; Handles #+NAME: lines before src blocks, #+CALL: lines with results,
+;; and both result formats (EXAMPLE blocks and colon-prefixed).
 ;; Parameters: {{file}}
 
 (let* ((file (expand-file-name "{{file}}")))
@@ -22,21 +24,33 @@
           (if (re-search-backward "^#\\+RESULTS:" nil t)
               (let ((results-start (match-beginning 0)))
                 (goto-char results-start)
-                (if (re-search-backward "^#\\+BEGIN_SRC" nil t)
-                    (progn
-                      (beginning-of-line)
-                      (when (and (> (point) (point-min))
-                                 (save-excursion
-                                   (forward-line -1)
-                                   (looking-at-p "^#\\+NAME:")))
-                        (forward-line -1))
-                      (when (and (> (point) (point-min))
-                                 (save-excursion
-                                   (forward-line -1)
-                                   (looking-at-p "^$")))
-                        (forward-line -1))
-                      (setq start (point)))
-                  (setq start results-start)))
+                (cond
+                 ;; Results belong to a src block
+                 ((re-search-backward "^#\\+BEGIN_SRC" nil t)
+                  (beginning-of-line)
+                  ;; Check for #+NAME: line above
+                  (when (and (> (point) (point-min))
+                             (save-excursion
+                               (forward-line -1)
+                               (looking-at-p "^#\\+NAME:")))
+                    (forward-line -1))
+                  (when (and (> (point) (point-min))
+                             (save-excursion
+                               (forward-line -1)
+                               (looking-at-p "^$")))
+                    (forward-line -1))
+                  (setq start (point)))
+                 ;; Results belong to a #+CALL: line
+                 ((progn (goto-char results-start)
+                         (re-search-backward "^#\\+CALL:" nil t))
+                  (beginning-of-line)
+                  (when (and (> (point) (point-min))
+                             (save-excursion
+                               (forward-line -1)
+                               (looking-at-p "^$")))
+                    (forward-line -1))
+                  (setq start (point)))
+                 (t (setq start results-start))))
             (goto-char example-end)
             (re-search-backward "^#\\+BEGIN_EXAMPLE" nil t)
             (beginning-of-line)
@@ -57,22 +71,35 @@
         ;; Should be on #+RESULTS: line now
         (when (looking-at-p "^#\\+RESULTS:")
           (let ((results-start (point)))
-            (if (progn (forward-line -1)
-                       (re-search-backward "^#\\+BEGIN_SRC" nil t))
-                (progn
-                  (beginning-of-line)
-                  (when (and (> (point) (point-min))
-                             (save-excursion
-                               (forward-line -1)
-                               (looking-at-p "^#\\+NAME:")))
-                    (forward-line -1))
-                  (when (and (> (point) (point-min))
-                             (save-excursion
-                               (forward-line -1)
-                               (looking-at-p "^$")))
-                    (forward-line -1))
-                  (setq start (point)))
-              (setq start results-start)))))
+            (cond
+             ;; Results belong to a src block
+             ((progn (forward-line -1)
+                     (re-search-backward "^#\\+BEGIN_SRC" nil t))
+              (beginning-of-line)
+              ;; Check for #+NAME: line above
+              (when (and (> (point) (point-min))
+                         (save-excursion
+                           (forward-line -1)
+                           (looking-at-p "^#\\+NAME:")))
+                (forward-line -1))
+              (when (and (> (point) (point-min))
+                         (save-excursion
+                           (forward-line -1)
+                           (looking-at-p "^$")))
+                (forward-line -1))
+              (setq start (point)))
+             ;; Results belong to a #+CALL: line
+             ((progn (goto-char results-start)
+                     (forward-line -1)
+                     (re-search-backward "^#\\+CALL:" nil t))
+              (beginning-of-line)
+              (when (and (> (point) (point-min))
+                         (save-excursion
+                           (forward-line -1)
+                           (looking-at-p "^$")))
+                (forward-line -1))
+              (setq start (point)))
+             (t (setq start results-start))))))
 
        ;; Case 3: Last thing is a src block with no results (just #+END_SRC)
        ((save-excursion
@@ -85,6 +112,12 @@
         (if (re-search-backward "^#\\+BEGIN_SRC" nil t)
             (progn
               (beginning-of-line)
+              ;; Check for #+NAME: line above
+              (when (and (> (point) (point-min))
+                         (save-excursion
+                           (forward-line -1)
+                           (looking-at-p "^#\\+NAME:")))
+                (forward-line -1))
               (when (and (> (point) (point-min))
                          (save-excursion
                            (forward-line -1)
@@ -97,7 +130,23 @@
                 (forward-line -1))
               (setq start (point)))))
 
-       ;; Case 4: Last thing is an image link
+       ;; Case 4: Last thing is a #+CALL: line with no results
+       ((save-excursion
+          (goto-char (point-max))
+          (skip-chars-backward " \t\n")
+          (beginning-of-line)
+          (looking-at-p "^#\\+CALL:"))
+        (goto-char (point-max))
+        (skip-chars-backward " \t\n")
+        (beginning-of-line)
+        (when (and (> (point) (point-min))
+                   (save-excursion
+                     (forward-line -1)
+                     (looking-at-p "^$")))
+          (forward-line -1))
+        (setq start (point)))
+
+       ;; Case 5: Last thing is an image link
        ((save-excursion
           (goto-char (point-max))
           (re-search-backward "^\\[\\[file:" nil t))
@@ -113,7 +162,7 @@
           (forward-line -1))
         (setq start (point)))
 
-       ;; Case 5: Last thing is a text note
+       ;; Case 6: Last thing is a text note
        (t
         (goto-char (point-max))
         (skip-chars-backward " \t\n")

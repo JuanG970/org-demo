@@ -20,10 +20,16 @@ The following should fail:
 #+END_SRC
 
 #+RESULTS:
-: 46
+: 91
 #+BEGIN_SRC elisp
 (random 100)
 #+END_SRC
 
 #+RESULTS:
-: 43
+: 59
+#+BEGIN_SRC elisp
+(+ 2 2)
+#+END_SRC
+
+#+RESULTS:
+: 4
