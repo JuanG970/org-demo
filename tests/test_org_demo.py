@@ -124,6 +124,7 @@ class TestOrgDocumentExec:
         params = args[1].get("params") or args[0][1]
         assert params["lang"] == "bash"
         assert params["code"] == "echo hello"
+        assert "block-" in params["name"]
 
     def test_exec_raises_on_failure(self, mock_handler):
         mock_handler.execute_file.return_value = EmacsResponse(
