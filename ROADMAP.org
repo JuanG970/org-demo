@@ -1,0 +1,114 @@
+#+TITLE: org-demo — Roadmap
+#+SUBTITLE: Planning-only. No implementation is authorized by this document.
+
+This file ranks the work that would most improve ~org-demo~ next. Every
+candidate below was checked against ~master~ at commit ~539ace4~ ("feat(cli):
+add call and tangle commands and enhance exec"); the evidence commands are
+reproducible and the acceptance criteria describe observable behaviour, not
+effort. Nothing here is a commitment or a schedule.
+
+** What holds up today
+
+- Packaging works: ~hatchling~ produces ~org_demo-0.1.0-py3-none-any.whl~ and
+  an sdist, and the wheel carries the ~README.md~ description.
+- ~pytest~ collects 41 tests; 38 pass.
+- The CLI surface is real: ~init~, ~note~, ~exec~, ~pop~, ~read~, ~call~,
+  ~tangle~, ~image~, ~verify~, ~extract~.
+
+** P0 — ~exec~ can block the CLI forever on a stock daemon
+
+*Evidence.* On a fresh ~emacs --daemon~ (Emacs 29.3, Python 3.11), ~org-demo
+exec d.org python3 "print('hi')"~ was killed after 120 s with no block
+written. Inside that daemon ~org-confirm-babel-evaluate~ is ~t~ and neither
+~python~ nor ~shell~ appears in ~org-babel-load-languages~. ~org-demo-exec.el~
+calls ~org-babel-execute-src-block~ directly, and
+~EmacsHandler.execute_file~ calls ~self.client.eval(...)~ with no timeout, so
+a confirmation prompt or a missing language hangs the process instead of
+failing. The documented quick-start therefore cannot be relied on after a
+plain ~emacs --daemon~.
+
+*Acceptance criteria.*
+
+- ~org-demo exec~ on a stock daemon either completes or returns a typed
+  ~OrgDemoError~ naming the block and the reason, within a bounded wait.
+- Babel confirmation is explicitly handled (bound or asked once), not left to
+  whatever the user's ~init.el~ sets.
+- Languages that are not enabled produce an actionable message, not a hang.
+- A regression test drives a stub ~emacsclient~ that never answers and asserts
+  the timeout path fires and the CLI exits non-zero.
+
+** P1 — ~--name~ is ignored, which breaks ~call~ and named blocks
+
+*Evidence.* ~document.py:110~ runs ~name = f"block-{_uuid.uuid4().hex[:8]}"~
+unconditionally, discarding the argument documented at ~cli.py:158~ and in the
+help text. Three tests fail on ~master~ for exactly this reason:
+~test_exec_calls_elisp~, ~test_exec_with_name~ and
+~test_exec_with_name_and_header_args~ (observed ~'block-50a14d4d' == 'analyze'~).
+~call <name>~ resolves a ~#+NAME:~ that ~exec --name~ never writes, so the
+named-block half of the tool is unusable end to end.
+
+*Acceptance criteria.*
+
+- ~org-demo exec --name greet ...~ writes ~#+NAME: greet~ above the block, and
+  ~org-demo call greet d.org~ executes that block.
+- Omitting ~--name~ still generates a unique ~block-<hex>~ name, preserving
+  current behaviour for unnamed blocks.
+- The three failing tests pass; a new test covers ~exec --name~ followed by
+  ~call~ in one document.
+
+** P2 — the Emacs boundary is untested; the two defects above slipped through it
+
+*Evidence.* ~coverage run --source=src/org_demo -m pytest~ reports 65 % overall
+(~cli.py~ 48 %, ~emacs_handler.py~ 57 %, ~document.py~ 85 %), and the lines
+covering the real ~execute_file~ path (~101-120~) are untouched. Tests
+substitute a mock handler, so parameter substitution, JSON decoding and
+~emacsclient~ failure handling are never exercised on ~master~.
+
+*Acceptance criteria.*
+
+- At least one test per elisp-backed command (~exec~, ~init~, ~note~, ~pop~,
+  ~read~, ~verify~) runs the real substitution and JSON parse path against a
+  scratch daemon, or against a stub ~emacsclient~ on ~PATH~ when no daemon is
+  available.
+- Emacs-dependent tests skip with a clear reason instead of failing when the
+  daemon is absent.
+- The suite reports the boundary path as covered, and P0's hang is caught by a
+  test rather than by a user.
+
+** P3 — no automated gate
+
+*Evidence.* There is no ~.github~ directory; the ~Makefile~ has only ~build~ and
+~install~ targets although ~pytest~ is a declared dev dependency;
+~.python-version~ pins 3.12.0 while ~pyproject.toml~ allows ~>=3.10~, so the
+lower bound is never run.
+
+*Acceptance criteria.*
+
+- ~make test~ creates/uses a virtualenv and runs ~pytest~ with the same command
+  the README shows.
+- GitHub Actions runs build and tests on at least 3.10 and 3.12.
+- The gate is introduced after P0 and P1 land, so it starts green rather than
+  blessing three known failures.
+
+** P4 — repository hygiene and licensing
+
+*Evidence.* Twelve ~.pyc~ files are tracked under
+~src/org_demo/__pycache__/~ and ~tests/__pycache__/~ despite ~.gitignore~;
+there is no ~LICENSE~ file and ~pyproject.toml~ declares no license or
+classifiers; ~README.md~ (install and development) and ~README.org~ (feature and
+command reference, whose ~Installation~ section is an empty ~TODO~) coexist
+without stating which is canonical.
+
+*Acceptance criteria.*
+
+- ~git ls-files | grep -c '\.pyc$'~ returns 0 and the ignore rules hold.
+- A license file plus matching ~pyproject.toml~ metadata exists.
+- One document is declared canonical, the other either merged into it or linked
+  as a reference, and the Installation section is no longer empty.
+
+** Deliberately excluded
+
+- Publishing to PyPI, renaming commands, or changing the CLI surface.
+- Replacing the ~python-emacs~ dependency; it is out of scope until P0 shows
+  whether the library or the elisp is at fault.
+- Showboat feature parity beyond what the README already claims.
