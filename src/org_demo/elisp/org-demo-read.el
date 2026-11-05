@@ -183,4 +183,4 @@
                             (cons "uuid" uuid)
                             (cons "date" date)
                             (cons "entries" (vconcat (nreverse entries))))))
-          (json-encode result)))))))
+          (json-encode result))))))
